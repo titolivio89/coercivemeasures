@@ -1,0 +1,17 @@
+name: psych-llm
+
+dependencies:
+  - python=3.11
+  - pandas
+  - numpy
+  - scikit-learn
+  - matplotlib
+  - scipy
+  - jupyterlab
+  - pip
+
+  - pip:
+      - xgboost
+      - catboost
+      - shap
+      - imbalanced-learn
