@@ -1,0 +1,17 @@
+random_state: 42
+
+n_splits: 5
+
+target: coercive_measure
+
+models:
+
+  logistic: true
+
+  svm: true
+
+  random_forest: true
+
+  xgboost: true
+
+  catboost: true
