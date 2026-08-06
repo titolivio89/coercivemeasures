@@ -1,12 +1,4 @@
-"""Updated training module to enforce TRIPOD-AI recommendations:
-- clear train/test separation (holdout test set)
-- fixed random seeds
-- reproducible preprocessing (save preprocessor)
-- nested CV on training set
-- final model refit on full training set and evaluation on held-out test
-- extensive logging of experiment metadata and metrics
-- export of CSVs for per-fold metrics and final test metrics
-"""
+"""Updated training module to run error analysis after final model evaluation."""
 import os
 import json
 import time
@@ -28,6 +20,7 @@ from .evaluation import save_roc_curve, save_calibration_curve, save_confusion_m
 from .explain import explain_model_shap
 from .utils import ensure_dir
 from .reporting import aggregate_and_report
+from .error_analysis import aggregate_errors
 
 
 def set_seeds(seed: int):
@@ -71,7 +64,7 @@ def nested_cv_and_train(overrides: dict):
 
     set_seeds(cfg.random_seed)
 
-    X, y = load_data(cfg.data_path, cfg.target_col, cfg.id_col)
+    X, y, ids = load_data(cfg.data_path, cfg.target_col, cfg.id_col)
     n_samples, n_features = X.shape
 
     # Train/Test split (holdout) - clear separation
@@ -79,6 +72,8 @@ def nested_cv_and_train(overrides: dict):
     train_idx, test_idx = next(sss.split(X, y))
     X_train, X_test = X.iloc[train_idx].reset_index(drop=True), X.iloc[test_idx].reset_index(drop=True)
     y_train, y_test = y.iloc[train_idx].reset_index(drop=True), y.iloc[test_idx].reset_index(drop=True)
+    ids_train = ids.iloc[train_idx].reset_index(drop=True) if ids is not None else None
+    ids_test = ids.iloc[test_idx].reset_index(drop=True) if ids is not None else None
 
     # Build preprocessor using training data only and save it for reproducibility
     preproc, num_cols, cat_cols = build_preprocessor(X_train)
@@ -265,6 +260,12 @@ def nested_cv_and_train(overrides: dict):
         aggregate_and_report(cfg.output_dir, per_fold_df, summary_df, metadata)
     except Exception as e:
         print(f"Reporting failed: {e}")
+
+    # Run clinical error analysis (FP/FN exports and visualizations)
+    try:
+        aggregate_errors(cfg.output_dir, X_test, y_test, ids_test, preproc, num_cols, cat_cols, models_dir=models_dir)
+    except Exception as e:
+        print(f"Error analysis failed: {e}")
 
     print(f"Done. Outputs saved to {cfg.output_dir}")
     return {
