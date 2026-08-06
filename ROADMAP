@@ -1,0 +1,40 @@
+# Scientific Roadmap
+
+## Version 0.1
+
+- Repository setup
+- Data preprocessing
+- Reproduce dissertation results
+
+---
+
+## Version 0.2
+
+- Logistic Regression
+- Linear SVM
+- Random Forest
+
+---
+
+## Version 0.3
+
+- XGBoost
+- CatBoost
+- Model benchmarking
+
+---
+
+## Version 0.4
+
+- Feature importance
+- SHAP
+- Error analysis
+- Calibration
+
+---
+
+## Version 0.5
+
+- Temporal validation
+- External validation
+- Manuscript submission
