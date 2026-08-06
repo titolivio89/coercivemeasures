@@ -1,34 +1,37 @@
-# Reproducible ML pipeline entrypoint
-
-import sys
-from pathlib import Path
-
-# make src importable
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT / "src"))
-
-from config import Config
-from data_loader import load_data
-from preprocessing import build_preprocessing_pipeline
-from feature_engineering import add_feature_pipeline
-from models import run_nested_cv_for_models
-from evaluation import save_overall_results
+#!/usr/bin/env python3
+"""Top-level entrypoint to run the ML pipeline.
+Usage: python run_pipeline.py --data data.csv --target target_column --output outputs/
+"""
+import argparse
+import os
+from src.pipeline import run
 
 
 def main():
-    cfg = Config()
+    parser = argparse.ArgumentParser(description="Run ML pipeline")
+    parser.add_argument("--data", required=True, help="Path to CSV dataset")
+    parser.add_argument("--target", required=True, help="Target column name")
+    parser.add_argument("--id", default=None, help="ID column to ignore (optional)")
+    parser.add_argument("--output", default="outputs", help="Output directory")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--outer_splits", type=int, default=5, help="Outer CV folds")
+    parser.add_argument("--inner_splits", type=int, default=3, help="Inner CV folds")
+    parser.add_argument("--n_jobs", type=int, default=1, help="Parallel jobs for model selection")
+    args = parser.parse_args()
 
-    X, y, df = load_data(cfg)
+    os.makedirs(args.output, exist_ok=True)
+    cfg = {
+        "data_path": args.data,
+        "target_col": args.target,
+        "id_col": args.id,
+        "output_dir": args.output,
+        "random_seed": args.seed,
+        "outer_splits": args.outer_splits,
+        "inner_splits": args.inner_splits,
+        "n_jobs": args.n_jobs,
+    }
+    run(cfg)
 
-    preproc = build_preprocessing_pipeline(cfg)
-    X_processed = preproc.fit_transform(X)
 
-    X_feat = add_feature_pipeline(X_processed, cfg)
-
-    results = run_nested_cv_for_models(X_feat, y, cfg, df)
-
-    save_overall_results(results, cfg)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

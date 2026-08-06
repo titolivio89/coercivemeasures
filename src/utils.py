@@ -1,8 +1,6 @@
-"""
-Utility helpers
-"""
-from pathlib import Path
+"""Utility functions."""
+import os
 
 
-def ensure_dir(path: Path):
-    path.mkdir(parents=True, exist_ok=True)
+def ensure_dir(path: str):
+    os.makedirs(path, exist_ok=True)

@@ -1,11 +1,10 @@
-python>=3.9
-scikit-learn>=1.2
+# Minimal requirements for the pipeline
 pandas>=1.5
 numpy>=1.23
-matplotlib>=3.6
-seaborn>=0.12
+scikit-learn>=1.2
 xgboost>=1.7
 catboost>=1.1
 shap>=0.41
+matplotlib>=3.5
+seaborn>=0.12
 joblib>=1.2
-scipy
