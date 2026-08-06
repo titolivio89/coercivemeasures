@@ -1,4 +1,9 @@
-"""Updated training module to run error analysis after final model evaluation."""
+"""Updated training module with temporal validation support.
+- Supports temporal train/test split by date column and year lists (train_years, test_years).
+- Falls back to stratified random holdout if temporal params not provided.
+- Performs nested CV on training set, refits on full training set, evaluates on test set.
+- Produces temporal vs CV comparison figures and CSV.
+"""
 import os
 import json
 import time
@@ -19,7 +24,7 @@ from .models import get_base_estimators, get_param_grids
 from .evaluation import save_roc_curve, save_calibration_curve, save_confusion_matrix
 from .explain import explain_model_shap
 from .utils import ensure_dir
-from .reporting import aggregate_and_report
+from .reporting import aggregate_and_report, temporal_vs_cv_plot
 from .error_analysis import aggregate_errors
 
 
@@ -62,18 +67,61 @@ def nested_cv_and_train(overrides: dict):
     from .config import default_config
     cfg = default_config(overrides)
 
+    # temporal options come from overrides dict (default_config keeps other settings)
+    date_col = overrides.get('date_col')
+    train_years = overrides.get('train_years')
+    test_years = overrides.get('test_years')
+    test_size = overrides.get('test_size', 0.2)
+
     set_seeds(cfg.random_seed)
 
     X, y, ids = load_data(cfg.data_path, cfg.target_col, cfg.id_col)
     n_samples, n_features = X.shape
 
-    # Train/Test split (holdout) - clear separation
-    sss = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=cfg.random_seed)
-    train_idx, test_idx = next(sss.split(X, y))
-    X_train, X_test = X.iloc[train_idx].reset_index(drop=True), X.iloc[test_idx].reset_index(drop=True)
-    y_train, y_test = y.iloc[train_idx].reset_index(drop=True), y.iloc[test_idx].reset_index(drop=True)
-    ids_train = ids.iloc[train_idx].reset_index(drop=True) if ids is not None else None
-    ids_test = ids.iloc[test_idx].reset_index(drop=True) if ids is not None else None
+    # If temporal split is requested, use it. Else use stratified random holdout
+    if date_col and train_years and test_years:
+        # ensure date_col exists in X
+        if date_col not in X.columns:
+            raise ValueError(f"Date column '{date_col}' not found in features: {X.columns.tolist()}")
+        df_all = pd.concat([X, y.reset_index(drop=True)], axis=1)
+        # parse dates
+        df_all[date_col] = pd.to_datetime(df_all[date_col], errors='coerce')
+        if df_all[date_col].isna().any():
+            raise ValueError(f"Some values in date column '{date_col}' could not be parsed as dates."
+                             " Clean or provide explicit parsing rules.")
+        train_mask = df_all[date_col].dt.year.isin(train_years)
+        test_mask = df_all[date_col].dt.year.isin(test_years)
+        if train_mask.sum() == 0 or test_mask.sum() == 0:
+            raise ValueError("Temporal split produced empty train or test set. Check train_years/test_years and date_col.")
+
+        train_df = df_all[train_mask].reset_index(drop=True)
+        test_df = df_all[test_mask].reset_index(drop=True)
+
+        X_train = train_df.drop(columns=[cfg.target_col]).reset_index(drop=True)
+        y_train = train_df[cfg.target_col].reset_index(drop=True)
+        X_test = test_df.drop(columns=[cfg.target_col]).reset_index(drop=True)
+        y_test = test_df[cfg.target_col].reset_index(drop=True)
+
+        if ids is not None:
+            ids_series = ids.reset_index(drop=True)
+            ids_train = ids_series[train_mask].reset_index(drop=True)
+            ids_test = ids_series[test_mask].reset_index(drop=True)
+        else:
+            ids_train = None
+            ids_test = None
+
+        n_train = len(X_train)
+        n_test = len(X_test)
+    else:
+        # Train/Test split (holdout) - clear separation
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=cfg.random_seed)
+        train_idx, test_idx = next(sss.split(X, y))
+        X_train, X_test = X.iloc[train_idx].reset_index(drop=True), X.iloc[test_idx].reset_index(drop=True)
+        y_train, y_test = y.iloc[train_idx].reset_index(drop=True), y.iloc[test_idx].reset_index(drop=True)
+        ids_train = ids.iloc[train_idx].reset_index(drop=True) if ids is not None else None
+        ids_test = ids.iloc[test_idx].reset_index(drop=True) if ids is not None else None
+        n_train = len(X_train)
+        n_test = len(X_test)
 
     # Build preprocessor using training data only and save it for reproducibility
     preproc, num_cols, cat_cols = build_preprocessor(X_train)
@@ -249,7 +297,12 @@ def nested_cv_and_train(overrides: dict):
         'random_seed': int(cfg.random_seed),
         'outer_splits': int(cfg.outer_splits),
         'inner_splits': int(cfg.inner_splits),
-        'models_run': list(estimators.keys())
+        'models_run': list(estimators.keys()),
+        'date_col': date_col,
+        'train_years': train_years,
+        'test_years': test_years,
+        'n_train': int(n_train),
+        'n_test': int(n_test)
     }
     meta_path = os.path.join(cfg.output_dir, 'experiment_metadata.json')
     with open(meta_path, 'w') as fh:
@@ -266,6 +319,29 @@ def nested_cv_and_train(overrides: dict):
         aggregate_errors(cfg.output_dir, X_test, y_test, ids_test, preproc, num_cols, cat_cols, models_dir=models_dir)
     except Exception as e:
         print(f"Error analysis failed: {e}")
+
+    # Temporal vs CV comparison: build table and plot if possible
+    try:
+        if not per_fold_df.empty and not summary_df.empty:
+            # aggregate CV metrics
+            agg = per_fold_df.groupby('model').agg({'roc_auc': ['mean', 'std'], 'balanced_accuracy': ['mean', 'std']})
+            agg.columns = ['roc_mean', 'roc_std', 'bal_mean', 'bal_std']
+            agg = agg.reset_index()
+            # merge with test summary
+            merged = agg.merge(summary_df, left_on='model', right_on='model', how='left')
+            temporal_df = pd.DataFrame({
+                'model': merged['model'],
+                'cv_mean_roc': merged['roc_mean'],
+                'cv_std_roc': merged['roc_std'],
+                'test_roc': merged['test_roc_auc'],
+                'cv_mean_bal': merged['bal_mean'],
+                'cv_std_bal': merged['bal_std'],
+                'test_bal': merged['test_balanced_accuracy']
+            })
+            temporal_vs_cv_plot(cfg.output_dir, temporal_df)
+        
+    except Exception as e:
+        print(f"Temporal vs CV comparison failed: {e}")
 
     print(f"Done. Outputs saved to {cfg.output_dir}")
     return {
