@@ -1,95 +1,11 @@
-# Prediction of Coercive Measures Using Privacy-Preserving Large Language Models
+# Simple README
 
-## Overview
+This repository now includes a reproducible ML pipeline.
 
-This repository contains a reproducible machine learning pipeline for predicting coercive measures in psychiatric inpatient care using structured clinical variables extracted from German admission notes by a locally deployed Large Language Model (LLM).
+Usage:
 
-The project accompanies the doctoral research of Guillermo Calvi at the Department of Psychiatry and Psychotherapy, University Hospital Carl Gustav Carus, Technische Universität Dresden.
+1. Install dependencies: pip install -r requirements.txt
+2. Place your dataset at data/data.csv with a 'target' column, or the pipeline will generate a synthetic dataset.
+3. Run: python run_pipeline.py
 
----
-
-## Objectives
-
-- Reproduce the dissertation analyses
-- Benchmark multiple machine learning models
-- Improve model generalizability
-- Develop an explainable prediction pipeline
-- Prepare a publication-ready analysis workflow
-
----
-
-## Pipeline
-
-Admission Notes
-
-↓
-
-LLM Information Extraction
-
-↓
-
-Structured Clinical Variables
-
-↓
-
-Machine Learning Models
-
-↓
-
-Prediction of Coercive Measures
-
-↓
-
-Evaluation & Explainability
-
----
-
-## Repository Structure
-
-```
-configs/
-data/
-docs/
-figures/
-manuscript/
-notebooks/
-results/
-src/
-
-README.md
-requirements.txt
-environment.yml
-run_pipeline.py
-```
-
----
-
-## Planned Models
-
-- Logistic Regression
-- Linear SVM
-- Random Forest
-- XGBoost
-- CatBoost
-
----
-
-## Evaluation
-
-- ROC-AUC
-- Balanced Accuracy
-- Precision
-- Recall
-- F1-score
-- Confusion Matrix
-- Calibration
-- Feature Importance
-
----
-
-## Future Work
-
-- Temporal validation
-- External validation
-- Explainability (SHAP)
-- Clinical decision support
+Outputs (figures and results) are saved in outputs/

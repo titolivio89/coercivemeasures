@@ -1,0 +1,11 @@
+python>=3.9
+scikit-learn>=1.2
+pandas>=1.5
+numpy>=1.23
+matplotlib>=3.6
+seaborn>=0.12
+xgboost>=1.7
+catboost>=1.1
+shap>=0.41
+joblib>=1.2
+scipy
