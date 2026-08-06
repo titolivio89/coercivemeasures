@@ -1,6 +1,6 @@
 """Reporting and figure generation for TRIPOD-AI compliance.
 Provides aggregated metrics tables, model comparison tables, manuscript-ready figures,
-and exports CSVs for all metrics.
+exports CSVs for all metrics, and temporal vs CV comparison figures.
 """
 import os
 import pandas as pd
@@ -43,9 +43,7 @@ def aggregate_and_report(output_dir: str, per_fold_df: pd.DataFrame, summary_df:
         plt.savefig(os.path.join(plots_dir, f'model_comparison_{m}.png'))
         plt.close()
 
-    # Combined ROC curves on test set (if summary_df has roc_curve paths)
-    # Try to plot the saved ROC images as a mosaic or overlay if possible by reading ROC data; but we have only images
-    # Instead, create a bar chart of test ROC and balanced accuracy
+    # Test-set performance comparison (bar chart)
     if not summary_df.empty:
         df = summary_df.copy()
         df_plot = df[['model', 'test_roc_auc', 'test_balanced_accuracy']].set_index('model')
@@ -68,4 +66,46 @@ def aggregate_and_report(output_dir: str, per_fold_df: pd.DataFrame, summary_df:
         for k, v in metadata.items():
             fh.write(f'- **{k}**: {v}\\n')
 
+    return True
+
+
+def temporal_vs_cv_plot(output_dir: str, temporal_df: pd.DataFrame):
+    """Create publication-ready comparison figures between temporal validation and standard CV.
+    temporal_df must contain columns: model, cv_mean_roc, cv_std_roc, test_roc, cv_mean_bal, cv_std_bal, test_bal
+    """
+    plots_dir = os.path.join(output_dir, 'figures')
+    os.makedirs(plots_dir, exist_ok=True)
+
+    df = temporal_df.copy()
+    df = df.set_index('model')
+
+    # ROC comparison: error bars for CV, point for test
+    plt.figure(figsize=(8, 5))
+    x = range(len(df))
+    plt.errorbar(x, df['cv_mean_roc'], yerr=df['cv_std_roc'], fmt='o', label='CV (mean ± std)', color='C0')
+    plt.scatter(x, df['test_roc'], marker='s', label='Temporal test', color='C1')
+    plt.xticks(x, df.index, rotation=45)
+    plt.ylabel('ROC AUC')
+    plt.title('Temporal validation vs standard CV (ROC AUC)')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_dir, 'temporal_vs_cv_roc.png'))
+    plt.savefig(os.path.join(plots_dir, 'temporal_vs_cv_roc.svg'))
+    plt.close()
+
+    # Balanced accuracy comparison
+    plt.figure(figsize=(8,5))
+    plt.errorbar(x, df['cv_mean_bal'], yerr=df['cv_std_bal'], fmt='o', label='CV (mean ± std)', color='C0')
+    plt.scatter(x, df['test_bal'], marker='s', label='Temporal test', color='C1')
+    plt.xticks(x, df.index, rotation=45)
+    plt.ylabel('Balanced Accuracy')
+    plt.title('Temporal validation vs standard CV (Balanced Accuracy)')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_dir, 'temporal_vs_cv_balanced_accuracy.png'))
+    plt.savefig(os.path.join(plots_dir, 'temporal_vs_cv_balanced_accuracy.svg'))
+    plt.close()
+
+    # Save temporal_df to CSV
+    temporal_df.to_csv(os.path.join(output_dir, 'temporal_vs_cv_comparison.csv'), index=False)
     return True
