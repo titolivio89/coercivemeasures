@@ -1,0 +1,17 @@
+@dataclass
+class FoldResult:
+    model: str
+    fold: int
+    roc_auc: float
+    balanced_accuracy: float
+    precision: float
+    recall: float
+    specificity: float
+    f1: float
+    mcc: float
+    brier: float
+    best_params: dict
+    train_size: int
+    test_size: int
+    positive_train: int
+    positive_test: int
