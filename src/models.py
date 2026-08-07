@@ -9,7 +9,15 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from catboost import CatBoostClassifier
-from sklearn.metrics import roc_auc_score, balanced_accuracy_score, roc_curve, precision_recall_curve
+from sklearn.metrics import (
+    roc_auc_score,
+    balanced_accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    matthews_corrcoef,
+    brier_score_loss
+)
 from joblib import Parallel, delayed
 from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
@@ -17,25 +25,88 @@ from config import Config
 from evaluation import plot_roc_curve, plot_calibration_curve, save_metrics, error_analysis
 
 
-def _get_models(cfg: Config):
+def _get_models(cfg: Config, y=None):
+
+    scale_pos_weight = None
+    if y is not None:
+        n_neg = (y == 0).sum()
+        n_pos = (y == 1).sum()
+        scale_pos_weight = n_neg / n_pos
+
     models = {
-        "logreg": (LogisticRegression(max_iter=1000, solver="saga", random_state=cfg.random_state),
-                   {"C": np.logspace(-4, 4, 10), "penalty": ["l2"]}),
-        "svm": (SVC(kernel="linear", probability=True, random_state=cfg.random_state),
-                {"C": np.logspace(-3, 3, 10)}),
-        "rf": (RandomForestClassifier(random_state=cfg.random_state),
-               {"n_estimators": [100, 200], "max_depth": [None, 5, 10], "class_weight": [None, "balanced"]}),
-        "xgb": (XGBClassifier(use_label_encoder=False, eval_metric="logloss", random_state=cfg.random_state),
-                {"n_estimators": [100, 200], "max_depth": [3, 6], "learning_rate": [0.01, 0.1]}),
-        "cat": (CatBoostClassifier(verbose=0, random_state=cfg.random_state),
-                {"iterations": [100, 200], "depth": [4, 6], "learning_rate": [0.01, 0.1]})
+
+        "Logistic Regression": (
+            LogisticRegression(
+                solver="saga",
+                max_iter=5000,
+                class_weight="balanced",
+                random_state=cfg.random_state
+            ),
+            {
+                "C": np.logspace(-4, 4, 20)
+            }
+        ),
+
+        "Linear SVM": (
+            SVC(
+                kernel="linear",
+                probability=True,
+                class_weight="balanced",
+                random_state=cfg.random_state
+            ),
+            {
+                "C": np.logspace(-4, 4, 20)
+            }
+        ),
+
+        "Random Forest": (
+            RandomForestClassifier(
+                random_state=cfg.random_state,
+                class_weight="balanced"
+            ),
+            {
+                "n_estimators": [100, 250, 500],
+                "max_depth": [None, 5, 10, 20],
+                "min_samples_leaf": [1, 2, 5]
+            }
+        ),
+
+        "XGBoost": (
+            XGBClassifier(
+                random_state=cfg.random_state,
+                eval_metric="logloss",
+                scale_pos_weight=scale_pos_weight,
+                tree_method="hist"
+            ),
+            {
+                "n_estimators": [100, 250, 500],
+                "max_depth": [3, 5, 7],
+                "learning_rate": [0.01, 0.05, 0.1],
+                "subsample": [0.8, 1.0]
+            }
+        ),
+
+        "CatBoost": (
+            CatBoostClassifier(
+                verbose=0,
+                random_state=cfg.random_state,
+                auto_class_weights="Balanced"
+            ),
+            {
+                "iterations": [100, 250, 500],
+                "depth": [4, 6, 8],
+                "learning_rate": [0.01, 0.05, 0.1]
+            }
+        )
+
     }
+
     return models
 
 
 def run_nested_cv_for_models(X, y, cfg: Config, df=None):
     outer_cv = StratifiedKFold(n_splits=cfg.n_splits_outer, shuffle=True, random_state=cfg.random_state)
-    models = _get_models(cfg)
+   models = _get_models(cfg, y)
 
     results = []
     fold_idx = 0
